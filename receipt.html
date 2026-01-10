@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Receipt Viewer - SmartKasir</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Courier New', monospace;
+            background: #f3f4f6;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .receipt-container {
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            max-width: 400px;
+            width: 100%;
+        }
+        
+        .receipt {
+            white-space: pre-wrap;
+            font-size: 12px;
+            line-height: 1.6;
+            color: #1f2937;
+            margin-bottom: 20px;
+        }
+        
+        .actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        button {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        
+        .btn-print {
+            background: #667eea;
+            color: white;
+        }
+        
+        .btn-print:hover {
+            background: #5568d3;
+        }
+        
+        .btn-close {
+            background: #f3f4f6;
+            color: #1f2937;
+        }
+        
+        .btn-close:hover {
+            background: #e5e7eb;
+        }
+    </style>
+</head>
+<body>
+    <div class="receipt-container">
+        <div id="receipt" class="receipt">Loading...</div>
+        <div class="actions">
+            <button class="btn-print" onclick="printReceipt()">🖨️ Print</button>
+            <button class="btn-close" onclick="window.close()">Close</button>
+        </div>
+    </div>
+    
+    <script>
+        const params = new URLSearchParams(window.location.search);
+        const invoiceId = params.get('id') || window.opener?.lastInvoiceId;
+        
+        async function loadReceipt() {
+            if (!invoiceId) {
+                document.getElementById('receipt').textContent = 'Invoice ID not found';
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/receipt/${invoiceId}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    document.getElementById('receipt').textContent = data.receipt;
+                } else {
+                    document.getElementById('receipt').textContent = 'Receipt not found';
+                }
+            } catch (e) {
+                document.getElementById('receipt').textContent = 'Error loading receipt: ' + e.message;
+            }
+        }
+        
+        function printReceipt() {
+            window.print();
+        }
+        
+        loadReceipt();
+    </script>
+</body>
+</html>

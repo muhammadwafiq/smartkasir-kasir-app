@@ -1,0 +1,182 @@
+from flask import Flask, render_template, request, jsonify
+from flask_cors import CORS
+import requests
+import json
+import sys
+import os
+import sqlite3
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from local_db import *
+
+app = Flask(__name__, template_folder='templates', static_folder='static')
+CORS(app)
+
+DB_FILE = "kasir.db"
+API_SERVER = "http://localhost:8000/api"
+
+# ============ INITIALIZATION ============
+@app.route('/api/init', methods=['POST'])
+def init():
+    try:
+        response = requests.get(f"{API_SERVER}/products/", timeout=5)
+        if response.status_code == 200:
+            products = response.json().get('products', [])
+            save_products(products)
+            return jsonify({"status": "success", "product_count": len(products), "offline_mode": False})
+    except:
+        pass
+    products = get_all_products()
+    return jsonify({"status": "success", "product_count": len(products), "offline_mode": True})
+
+# ============ PRODUCTS ============
+@app.route('/api/products', methods=['GET'])
+def get_products():
+    category = request.args.get('category')
+    products = get_products_by_category(category) if category else get_all_products()
+    return jsonify({"status": "success", "products": products})
+
+@app.route('/api/categories', methods=['GET'])
+def get_cats():
+    return jsonify({"status": "success", "categories": get_categories()})
+
+# ============ TRANSACTIONS ============
+@app.route('/api/transactions', methods=['POST'])
+def create_transaction():
+    try:
+        data = request.json
+        trans_id = save_transaction(
+            data.get('total_amount'),
+            data.get('payment_method'),
+            data.get('items'),
+            data.get('notes', '')
+        )
+        return jsonify({"status": "success", "id": trans_id, "total_amount": data.get('total_amount')}), 201
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/transactions/today', methods=['GET'])
+def get_today_trans():
+    transactions = get_today_transactions()
+    result = [{"id": t[0], "total_amount": t[1], "payment_method": t[2], "notes": t[3], "created_at": t[4]} for t in transactions]
+    return jsonify({"status": "success", "transactions": result, "count": len(result)})
+
+@app.route('/api/transactions/<int:trans_id>', methods=['GET'])
+def get_trans_detail(trans_id):
+    detail = get_transaction_detail(trans_id)
+    if detail:
+        return jsonify({"status": "success", "transaction": detail})
+    return jsonify({"status": "error"}), 404
+
+@app.route('/api/summary/today', methods=['GET'])
+def get_summary():
+    return jsonify({"status": "success", "summary": get_today_summary()})
+
+# ============ QRIS ============
+@app.route('/api/qris/generate', methods=['POST'])
+def generate_qris():
+    try:
+        from qris_handler import QRISGenerator
+        data = request.json
+        
+        qris = QRISGenerator()
+        result = qris.generate_qris(
+            amount=data.get('amount'),
+            trans_id=1,
+            notes=data.get('description', '')
+        )
+        
+        return jsonify({
+            "status": "success",
+            "qr_base64": result['qr_base64'],
+            "display_text": result['display_text']
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# ============ STOCK ============
+@app.route('/api/products/<int:product_id>/stock', methods=['PATCH'])
+def update_stock(product_id):
+    try:
+        data = request.json
+        qty_sold = data.get('qty_sold', 0)
+        
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute('UPDATE products SET stock = stock - ? WHERE id = ?', (qty_sold, product_id))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"status": "success", "message": f"Stock updated -{qty_sold}"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# ============ STATUS ============
+@app.route('/api/status', methods=['GET'])
+def get_status():
+    try:
+        requests.get(f"{API_SERVER}/", timeout=2)
+        online = True
+    except:
+        online = False
+    return jsonify({"status": "ok", "online": online, "products": len(get_all_products())})
+
+# ============ VIEWS ============
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/monitor')
+def monitor_display():
+    return render_template('monitor.html')
+
+if __name__ == '__main__':
+    init_db()
+    app.run(debug=True, port=5000, host='0.0.0.0')
+
+@app.route('/api/product/barcode', methods=['POST'])
+def get_product_by_barcode():
+    """Lookup product by barcode or product ID"""
+    try:
+        data = request.json
+        barcode = str(data.get('barcode', '')).strip()
+        
+        if not barcode:
+            return jsonify({"status": "error", "message": "Barcode tidak boleh kosong"}), 400
+        
+        # Connect to local database
+        conn = sqlite3.connect('local_database.db')
+        cursor = conn.cursor()
+        
+        # Try search by ID first, then by barcode
+        cursor.execute('''
+            SELECT id, name, price, stock, barcode 
+            FROM products 
+            WHERE id = ? OR barcode = ? OR name LIKE ?
+            LIMIT 1
+        ''', (barcode, barcode, f'%{barcode}%'))
+        
+        product = cursor.fetchone()
+        conn.close()
+        
+        if not product:
+            return jsonify({
+                "status": "error",
+                "message": f"Produk dengan barcode '{barcode}' tidak ditemukan"
+            }), 404
+        
+        # Return product details
+        return jsonify({
+            "status": "success",
+            "product": {
+                "id": product[0],
+                "name": product[1],
+                "price": product[2],
+                "stock": product[3],
+                "barcode": product[4] or ""
+            }
+        }), 200
+    
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+

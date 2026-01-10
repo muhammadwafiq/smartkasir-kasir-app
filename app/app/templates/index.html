@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartKasir - POS System</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; padding: 20px; background: rgba(255, 255, 255, 0.95); border-radius: 12px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1); }
+        .header h1 { font-size: 28px; font-weight: 700; background: linear-gradient(135deg, #667eea, #764ba2); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .main-layout { display: grid; grid-template-columns: 1fr 400px; gap: 20px; }
+        .card { background: white; border-radius: 12px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1); }
+        .card-header { padding: 20px; border-bottom: 1px solid #f0f0f0; font-size: 18px; font-weight: 600; }
+        .card-body { padding: 20px; }
+        .barcode-input-group { display: flex; gap: 10px; margin-bottom: 20px; }
+        .barcode-input-group input { flex: 1; padding: 12px 16px; border: 2px solid #e5e7eb; border-radius: 8px; }
+        .barcode-input-group input:focus { outline: none; border-color: #667eea; box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1); }
+        .barcode-input-group button { padding: 12px 24px; background: linear-gradient(135deg, #667eea, #764ba2); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; }
+        .barcode-input-group button:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3); }
+        .cart-table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 15px; }
+        .cart-table thead { background: #f8f9fa; border-bottom: 2px solid #e5e7eb; }
+        .cart-table th { padding: 12px 16px; text-align: left; font-weight: 600; color: #666; }
+        .cart-table td { padding: 12px 16px; border-bottom: 1px solid #f0f0f0; }
+        .qty-controls { display: flex; align-items: center; gap: 8px; }
+        .qty-btn { width: 28px; height: 28px; border: 1px solid #e5e7eb; background: white; border-radius: 4px; cursor: pointer; font-weight: 600; color: #667eea; }
+        .qty-btn:hover { background: #f8f9fa; }
+        .qty-input { width: 50px; text-align: center; padding: 4px 8px; border: 1px solid #e5e7eb; border-radius: 4px; font-size: 13px; }
+        .qty-input:focus { outline: none; border-color: #667eea; }
+        .action-btn { padding: 6px 12px; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; }
+        .btn-delete { background: #fee2e2; color: #c0392b; }
+        .btn-delete:hover { background: #fca5a5; }
+        .total-section { background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 20px; margin-top: 20px; border-radius: 8px; }
+        .total-amount { font-size: 32px; font-weight: 700; }
+        .btn-payment { padding: 14px 20px; border: none; border-radius: 8px; width: 100%; font-weight: 600; cursor: pointer; margin-bottom: 10px; }
+        .btn-qris { background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
+        .btn-qris:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3); }
+        .btn-cash { background: #f3f4f6; color: #333; border: 2px solid #e5e7eb; }
+        .empty-state { text-align: center; padding: 40px 20px; color: #999; }
+        .status-badge { background: #10b981; color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+        #message { padding: 12px 16px; border-radius: 8px; margin-bottom: 15px; display: none; }
+        #message.error { background: #fee2e2; color: #c0392b; border-left: 4px solid #c0392b; display: block; }
+        #message.success { background: #dcfce7; color: #16a34a; border-left: 4px solid #16a34a; display: block; }
+        #pay-message { display: none; text-align: center; padding: 10px; background: #f8f9fa; border-radius: 6px; margin-top: 10px; }
+        #pay-message.show { display: block; }
+        .qris-preview img { max-width: 100%; border-radius: 8px; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>💳 SmartKasir</h1>
+            <div style="display: flex; gap: 30px; font-size: 13px; color: #666;">
+                <div><span class="status-badge">● ONLINE</span></div>
+                <div id="current-time">09 Jan, 13:30</div>
+                <div>Kasir: <strong>Wafiq</strong></div>
+            </div>
+        </div>
+        <div class="main-layout">
+            <div class="card">
+                <div class="card-header">🛒 Keranjang Belanja</div>
+                <div class="card-body">
+                    <div class="barcode-input-group">
+                        <input id="barcode-input" type="text" placeholder="Scan / ketik barcode" autofocus>
+                        <button onclick="addByBarcode()">+</button>
+                    </div>
+                    <div id="message"></div>
+                    <table class="cart-table">
+                        <thead><tr><th>Produk</th><th>Qty</th><th>Harga</th><th>Subtotal</th><th>Aksi</th></tr></thead>
+                        <tbody id="cart-body"><tr><td colspan="5"><div class="empty-state">📦 Keranjang kosong</div></td></tr></tbody>
+                    </table>
+                    <div class="total-section">
+                        <div style="font-size: 13px; opacity: 0.8;">TOTAL PEMBAYARAN</div>
+                        <div class="total-amount">Rp <span id="total-display">0</span></div>
+                    </div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header">💰 Pembayaran</div>
+                <div class="card-body">
+                    <label style="font-size: 12px; font-weight: 600; color: #666; display: block; margin-bottom: 10px;">Metode Pembayaran</label>
+                    <button class="btn-payment btn-qris" onclick="payWithQRIS()">⚡ Bayar QRIS</button>
+                    <button class="btn-payment btn-cash">💵 Tunai</button>
+                    <div id="pay-message"></div>
+                    <div class="qris-preview" id="qris-preview"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        const API_URL = '/api';
+        let cart = [];
+        function formatRupiah(num) { return num.toLocaleString('id-ID'); }
+        function showMessage(text, type = 'error') {
+            const div = document.getElementById('message');
+            div.className = type;
+            div.textContent = text;
+            if (text) setTimeout(() => { div.textContent = ''; div.className = ''; }, 3000);
+        }
+        async function addByBarcode() {
+            const input = document.getElementById('barcode-input');
+            const barcode = input.value.trim();
+            if (!barcode) { showMessage('Barcode tidak boleh kosong'); return; }
+            try {
+                const res = await fetch(`${API_URL}/product/barcode`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ barcode: barcode }) });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    const p = data.product;
+                    const existing = cart.find(item => item.id === p.id);
+                    if (existing) existing.qty += 1;
+                    else cart.push({ id: p.id, name: p.name, barcode: p.barcode, price: p.price, qty: 1 });
+                    renderCart();
+                    showMessage(`"${p.name}" ditambahkan ✓`, 'success');
+                    input.value = '';
+                    input.focus();
+                } else {
+                    showMessage(data.message || 'Produk tidak ditemukan');
+                }
+            } catch (err) { showMessage('Error: ' + err.message); }
+        }
+        function updateQty(itemId, newQty) {
+            newQty = Math.max(1, parseInt(newQty) || 1);
+            const item = cart.find(i => i.id === itemId);
+            if (item) { item.qty = newQty; renderCart(); }
+        }
+        function removeItem(itemId) {
+            cart = cart.filter(item => item.id !== itemId);
+            renderCart();
+            showMessage('Item dihapus', 'success');
+        }
+        function renderCart() {
+            const tbody = document.getElementById('cart-body');
+            tbody.innerHTML = '';
+            let total = 0;
+            if (cart.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state">📦 Keranjang kosong</div></td></tr>';
+            } else {
+                cart.forEach(item => {
+                    const subtotal = item.price * item.qty;
+                    total += subtotal;
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `<td><strong>${item.name}</strong><br><small style="color:#999;">${item.barcode}</small></td><td><div class="qty-controls"><button class="qty-btn" onclick="updateQty(${item.id}, ${item.qty - 1})">−</button><input type="number" class="qty-input" value="${item.qty}" onchange="updateQty(${item.id}, this.value)"><button class="qty-btn" onclick="updateQty(${item.id}, ${item.qty + 1})">+</button></div></td><td>Rp ${formatRupiah(item.price)}</td><td><strong>Rp ${formatRupiah(subtotal)}</strong></td><td><button class="action-btn btn-delete" onclick="removeItem(${item.id})">🗑️ Hapus</button></td>`;
+                    tbody.appendChild(tr);
+                });
+            }
+            document.getElementById('total-display').textContent = formatRupiah(total);
+        }
+        document.getElementById('barcode-input').addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); addByBarcode(); } });
+        async function payWithQRIS() {
+            const total = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
+            if (total <= 0) { document.getElementById('pay-message').textContent = 'Keranjang masih kosong!'; return; }
+            try {
+                const res = await fetch(`${API_URL}/qris/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amount: total, description: 'SmartKasir Payment' }) });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    document.getElementById('pay-message').textContent = '✓ QRIS siap untuk discan';
+                    document.getElementById('pay-message').className = 'show';
+                    document.getElementById('qris-preview').innerHTML = `<img src="${data.qr_base64}" alt="QRIS">`;
+                }
+            } catch (err) { document.getElementById('pay-message').textContent = 'Error: ' + err.message; }
+        }
+        renderCart();
+    </script>
+</body>
+</html>

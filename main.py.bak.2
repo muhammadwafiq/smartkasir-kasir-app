@@ -1,0 +1,359 @@
+from flask import Flask, render_template, send_file, request, jsonify
+from flask_cors import CORS
+import sqlite3
+import json
+from datetime import datetime
+import os
+
+app = Flask(__name__, static_folder='.', static_url_path='')
+CORS(app)
+
+# Database path
+DB_PATH = 'kasir.db'
+cart_session = {}
+
+def get_db():
+    """Connect ke database"""
+    db = sqlite3.connect(DB_PATH)
+    db.row_factory = sqlite3.Row
+    return db
+
+def init_db():
+    """Initialize database"""
+    db = get_db()
+    cursor = db.cursor()
+    
+    # Products table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS products (
+            id INTEGER PRIMARY KEY,
+            barcode TEXT UNIQUE,
+            name TEXT,
+            price INTEGER,
+            stock INTEGER DEFAULT 100,
+            minimum_stock INTEGER DEFAULT 20
+        )
+    ''')
+    
+    # Transactions table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS transactions (
+            id INTEGER PRIMARY KEY,
+            items_json TEXT,
+            total_amount INTEGER,
+            payment_method TEXT,
+            payment_status TEXT,
+            kasir_name TEXT,
+            transaction_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # Inventory logs
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS inventory_logs (
+            id INTEGER PRIMARY KEY,
+            barcode TEXT,
+            product_name TEXT,
+            quantity_change INTEGER,
+            action TEXT,
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # Stock alerts
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS stock_alerts (
+            id INTEGER PRIMARY KEY,
+            barcode TEXT,
+            product_name TEXT,
+            current_stock INTEGER,
+            minimum_stock INTEGER,
+            status TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # Insert dummy products
+    cursor.execute('SELECT COUNT(*) as count FROM products')
+    if cursor.fetchone()['count'] == 0:
+        products = [
+            ('8992700100097', 'Indomie Goreng', 2500),
+            ('8992700100110', 'Indomie Kuah Ayam', 2500),
+            ('8992711400029', 'Mie Sedaap Goreng', 3000),
+            ('4001200006008', 'Aqua 600ml', 5000),
+            ('8998888100010', 'Coca Cola 250ml', 4500),
+            ('8888000100001', 'Sprite 250ml', 4500),
+            ('8999999900001', 'Teh Sosro', 3000),
+            ('7777777700001', 'Roti Tawar', 8000),
+        ]
+        
+        for barcode, name, price in products:
+            cursor.execute('''
+                INSERT INTO products (barcode, name, price, stock)
+                VALUES (?, ?, ?, 100)
+            ''', (barcode, name, price))
+    
+    db.commit()
+    db.close()
+
+# Initialize DB on startup
+init_db()
+
+# ============================================
+# ROUTES
+# ============================================
+
+# Serve HTML
+@app.route('/')
+def index():
+    return send_file('index.html')
+
+# Get product
+@app.route('/product/<barcode>', methods=['GET'])
+def get_product(barcode):
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute('SELECT * FROM products WHERE barcode = ?', (barcode,))
+        product = cursor.fetchone()
+        db.close()
+        
+        if not product:
+            return jsonify({'success': False, 'message': 'Produk tidak ditemukan'}), 404
+        
+        return jsonify({
+            'success': True,
+            'product': {
+                'barcode': product['barcode'],
+                'name': product['name'],
+                'price': product['price'],
+                'stock': product['stock']
+            }
+        }), 200
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+# Checkout
+@app.route('/checkout', methods=['POST'])
+def checkout():
+    """Process checkout & track inventory"""
+    try:
+        data = request.get_json()
+        payment_method = data.get('payment_method')
+        nominal = data.get('nominal', 0)
+        
+        if not cart_session:
+            return jsonify({'success': False, 'message': 'Keranjang kosong'}), 400
+        
+        # Hitung total
+        total = sum(item['price'] * item['qty'] for item in cart_session.values())
+        
+        # Validasi nominal tunai
+        if payment_method == 'tunai' and nominal < total:
+            return jsonify({'success': False, 'message': 'Nominal kurang'}), 400
+        
+        # Save ke database
+        db = get_db()
+        cursor = db.cursor()
+        
+        items_json = json.dumps(cart_session)
+        cursor.execute('''
+            INSERT INTO transactions (items_json, total_amount, payment_method, payment_status, kasir_name)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (items_json, total, payment_method, 'completed', 'Cashier'))
+        
+        db.commit()
+        transaction_id = cursor.lastrowid
+        
+        # INVENTORY UPDATE - Kurangi stock
+        for barcode, item in cart_session.items():
+            cursor.execute('SELECT stock FROM products WHERE barcode = ?', (barcode,))
+            product = cursor.fetchone()
+            
+            if product:
+                new_stock = product['stock'] - item['qty']
+                cursor.execute('UPDATE products SET stock = ? WHERE barcode = ?', (new_stock, barcode))
+                
+                # Log inventory
+                cursor.execute('''
+                    INSERT INTO inventory_logs (barcode, product_name, quantity_change, action)
+                    VALUES (?, ?, ?, ?)
+                ''', (barcode, item['name'], -item['qty'], 'sold'))
+                
+                # Check minimum stock
+                cursor.execute('SELECT minimum_stock FROM products WHERE barcode = ?', (barcode,))
+                min_stock = cursor.fetchone()['minimum_stock']
+                
+                if new_stock < min_stock:
+                    cursor.execute('''
+                        INSERT INTO stock_alerts (barcode, product_name, current_stock, minimum_stock, status)
+                        VALUES (?, ?, ?, ?, ?)
+                    ''', (barcode, item['name'], new_stock, min_stock, 'alert'))
+        
+        db.commit()
+        db.close()
+        
+        # Clear cart
+        cart_session.clear()
+        
+        return jsonify({
+            'success': True, 
+            'invoice_number': transaction_id,
+            'total': total,
+            'payment_method': payment_method
+        }), 200
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+# ============================================
+# INVENTORY MANAGEMENT
+# ============================================
+
+@app.route('/inventory/stock/<barcode>', methods=['GET'])
+def get_stock(barcode):
+    """Get stock produk"""
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute('SELECT barcode, name, price, stock, minimum_stock FROM products WHERE barcode = ?', (barcode,))
+        product = cursor.fetchone()
+        db.close()
+        
+        if not product:
+            return jsonify({'success': False, 'message': 'Produk tidak ditemukan'}), 404
+        
+        return jsonify({
+            'success': True,
+            'barcode': product['barcode'],
+            'name': product['name'],
+            'price': product['price'],
+            'stock': product['stock'],
+            'minimum_stock': product['minimum_stock'],
+            'status': 'warning' if product['stock'] < product['minimum_stock'] else 'ok'
+        }), 200
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/inventory/alerts', methods=['GET'])
+def get_stock_alerts():
+    """Get daftar produk dengan stock minimum"""
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute('''
+            SELECT DISTINCT barcode, product_name, current_stock, minimum_stock
+            FROM stock_alerts
+            WHERE status = 'alert'
+            ORDER BY created_at DESC
+        ''')
+        
+        alerts = cursor.fetchall()
+        db.close()
+        
+        return jsonify({
+            'success': True,
+            'count': len(alerts),
+            'alerts': [dict(a) for a in alerts]
+        }), 200
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/inventory/logs', methods=['GET'])
+def get_inventory_logs():
+    """Get inventory activity log"""
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute('''
+            SELECT * FROM inventory_logs
+            ORDER BY created_at DESC
+            LIMIT 100
+        ''')
+        
+        logs = cursor.fetchall()
+        db.close()
+        
+        return jsonify({
+            'success': True,
+            'logs': [dict(l) for l in logs]
+        }), 200
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+# ============================================
+# RECEIPT / STRUK PRINTING
+# ============================================
+
+def generate_receipt(transaction_id):
+    """Generate receipt text untuk thermal printer"""
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute('SELECT * FROM transactions WHERE id = ?', (transaction_id,))
+        transaction = cursor.fetchone()
+        db.close()
+        
+        if not transaction:
+            return None
+        
+        items = json.loads(transaction['items_json'])
+        
+        # Format receipt 58mm thermal paper
+        receipt = ""
+        receipt += "=" * 40 + "\n"
+        receipt += "         SMARTKASIR - TOKO MINI\n"
+        receipt += "=" * 40 + "\n"
+        receipt += f"Invoice: #{transaction['id']}\n"
+        receipt += f"Tanggal: {transaction['transaction_date']}\n"
+        receipt += f"Kasir: {transaction['kasir_name']}\n"
+        receipt += "-" * 40 + "\n"
+        receipt += "ITEM DETAIL:\n"
+        receipt += "-" * 40 + "\n"
+        
+        for barcode, item in items.items():
+            name = item['name'][:20]  # Max 20 char
+            qty = item['qty']
+            price = item['price']
+            subtotal = qty * price
+            
+            receipt += f"{name}\n"
+            receipt += f"  {qty}x Rp {price:,} = Rp {subtotal:,}\n"
+        
+        receipt += "-" * 40 + "\n"
+        receipt += f"SUBTOTAL          Rp {transaction['total_amount']:,}\n"
+        receipt += f"BAYAR ({transaction['payment_method'].upper()})     Rp {transaction['total_amount']:,}\n"
+        
+        if transaction['payment_method'] == 'tunai':
+            receipt += f"KEMBALIAN         Rp 0\n"
+        
+        receipt += "=" * 40 + "\n"
+        receipt += "     Terima kasih atas pembelian Anda\n"
+        receipt += "         Selamat datang kembali!\n"
+        receipt += "=" * 40 + "\n"
+        receipt += f"{datetime.now().strftime('%H:%M:%S')}\n"
+        
+        return receipt
+    except Exception as e:
+        print(f"Error generating receipt: {str(e)}")
+        return None
+
+@app.route('/receipt/<int:transaction_id>', methods=['GET'])
+def get_receipt(transaction_id):
+    """Get receipt text"""
+    try:
+        receipt = generate_receipt(transaction_id)
+        
+        if not receipt:
+            return jsonify({'success': False, 'message': 'Receipt tidak ditemukan'}), 404
+        
+        return jsonify({
+            'success': True,
+            'receipt': receipt,
+            'transaction_id': transaction_id
+        }), 200
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5000)

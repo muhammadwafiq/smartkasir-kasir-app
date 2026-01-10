@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartKasir - POS System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .main-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+        }
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+        }
+        h1, h2 { color: #333; margin-bottom: 15px; }
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .input-group input {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.3s;
+        }
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        .btn-primary:hover { background: #5568d3; }
+        .btn-secondary {
+            background: #ff9f43;
+            color: white;
+        }
+        .btn-secondary:hover { background: #e88c2d; }
+        .btn-danger {
+            background: #ff6b6b;
+            color: white;
+            padding: 5px 10px;
+            font-size: 12px;
+        }
+        .btn-danger:hover { background: #ee5a52; }
+        .btn-full { width: 100%; margin-top: 10px; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        th {
+            background: #667eea;
+            color: white;
+        }
+        .qty-control {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+            justify-content: center;
+        }
+        .qty-control button {
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            font-size: 14px;
+        }
+        .qty-control input {
+            width: 45px;
+            text-align: center;
+            padding: 4px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .empty-cart { text-align: center; color: #999; padding: 40px 0; }
+        .total-section {
+            background: #667eea;
+            color: white;
+            padding: 30px;
+            border-radius: 12px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .total-label { font-size: 14px; opacity: 0.9; }
+        .total-amount { font-size: 40px; font-weight: bold; }
+        .payment-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .payment-info {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        .payment-info strong { display: block; margin-bottom: 5px; }
+        .payment-info small { color: #999; }
+        .form-group { margin-bottom: 15px; }
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #333;
+            font-size: 14px;
+        }
+        .form-control {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .kembalian-display {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 10px 0;
+            border-left: 4px solid #2d7a5b;
+        }
+        .kembalian-label { color: #999; font-size: 12px; }
+        .kembalian-amount { font-size: 24px; color: #2d7a5b; font-weight: bold; }
+        .message {
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            display: none;
+        }
+        .message.error {
+            background: #ffe5e5;
+            color: #d32f2f;
+        }
+        .message.success {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        @media (max-width: 768px) {
+            .main-container { grid-template-columns: 1fr; }
+            .payment-buttons { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <!-- LEFT SIDE: CART -->
+        <div>
+            <div class="card">
+                <h1>🛒 SmartKasir - Keranjang</h1>
+                
+                <div class="input-group">
+                    <input type="text" id="barcode" placeholder="Scan barcode atau ketik..." autofocus>
+                    <button class="btn btn-primary" onclick="addProduct()">➕ Tambah</button>
+                </div>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Produk</th>
+                            <th width="80">Qty</th>
+                            <th width="90">Harga</th>
+                            <th width="100">Subtotal</th>
+                            <th width="60">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cartTable">
+                        <tr><td colspan="5" class="empty-cart">Keranjang kosong</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- RIGHT SIDE: PAYMENT -->
+        <div>
+            <div class="card">
+                <div class="total-section">
+                    <div class="total-label">TOTAL PEMBAYARAN</div>
+                    <div class="total-amount" id="totalAmount" data-total="0">Rp 0</div>
+                </div>
+
+                <div class="payment-buttons">
+                    <button class="btn btn-primary btn-full" onclick="selectPayment('qris')">⚡ QRIS</button>
+                    <button class="btn btn-secondary btn-full" onclick="selectPayment('tunai')">💵 Tunai</button>
+                </div>
+
+                <div class="message error" id="errorMsg"></div>
+                <div class="message success" id="successMsg"></div>
+
+                <!-- QRIS -->
+                <div id="qrisPayment" style="display: none;">
+                    <div class="payment-info">
+                        <strong>⚡ Pembayaran QRIS</strong>
+                        <small>Scan dengan smartphone Anda</small>
+                        <p style="color: #667eea; font-size: 13px; margin-top: 8px;">✓ QRIS siap untuk discan</p>
+                    </div>
+                    <button class="btn btn-primary btn-full" onclick="checkout('qris')">✓ Konfirmasi QRIS</button>
+                </div>
+
+                <!-- TUNAI -->
+                <div id="tunaiPayment" style="display: none;">
+                    <div class="payment-info">
+                        <strong>💵 Pembayaran Tunai</strong>
+                        <small>Hitung kembalian otomatis</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Nominal Pembayaran (Rp)</label>
+                        <input type="number" id="nominalInput" class="form-control" placeholder="0" min="0" step="100" onchange="calculateChange()">
+                    </div>
+
+                    <div class="kembalian-display">
+                        <div class="kembalian-label">Kembalian:</div>
+                        <div class="kembalian-amount" id="changeAmount">Rp 0</div>
+                    </div>
+
+                    <button class="btn btn-secondary btn-full" onclick="checkout('tunai')">✓ Konfirmasi Pembayaran</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let cart = {};
+
+        function addProduct() {
+            const barcode = document.getElementById('barcode').value.trim();
+            if (!barcode) {
+                showError('Masukkan barcode!');
+                return;
+            }
+
+            fetch(`/add-to-cart/${barcode}`, { method: 'POST' })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        cart = data.cart;
+                        renderCart();
+                        document.getElementById('barcode').value = '';
+                        document.getElementById('barcode').focus();
+                    } else {
+                        showError(data.message || 'Produk tidak ditemukan');
+                    }
+                })
+                .catch(e => showError('Error: ' + e));
+        }
+
+        function renderCart() {
+            const tbody = document.getElementById('cartTable');
+            tbody.innerHTML = '';
+            let total = 0;
+
+            if (Object.keys(cart).length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="empty-cart">Keranjang kosong</td></tr>';
+                document.getElementById('totalAmount').textContent = 'Rp 0';
+                document.getElementById('totalAmount').dataset.total = 0;
+                return;
+            }
+
+            for (const [barcode, item] of Object.entries(cart)) {
+                const subtotal = item.price * item.qty;
+                total += subtotal;
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td><strong>${item.name}</strong><br><small>${barcode}</small></td>
+                        <td>
+                            <div class="qty-control">
+                                <button class="btn btn-primary" onclick="updateQty('${barcode}', -1)">−</button>
+                                <input type="number" value="${item.qty}" onchange="setQty('${barcode}', this.value)">
+                                <button class="btn btn-primary" onclick="updateQty('${barcode}', 1)">+</button>
+                            </div>
+                        </td>
+                        <td>Rp ${item.price.toLocaleString('id-ID')}</td>
+                        <td>Rp ${subtotal.toLocaleString('id-ID')}</td>
+                        <td><button class="btn btn-danger" onclick="removeItem('${barcode}')">Hapus</button></td>
+                    </tr>
+                `;
+            }
+
+            document.getElementById('totalAmount').textContent = 'Rp ' + total.toLocaleString('id-ID');
+            document.getElementById('totalAmount').dataset.total = total;
+        }
+
+        function updateQty(barcode, change) {
+            fetch(`/update-qty/${barcode}/${change}`, { method: 'POST' })
+                .then(r => r.json())
+                .then(data => {
+                    cart = data.cart;
+                    renderCart();
+                })
+                .catch(e => showError('Error: ' + e));
+        }
+
+        function setQty(barcode, qty) {
+            const newQty = parseInt(qty);
+            if (newQty <= 0) removeItem(barcode);
+            else {
+                const change = newQty - cart[barcode].qty;
+                updateQty(barcode, change);
+            }
+        }
+
+        function removeItem(barcode) {
+            fetch(`/remove-from-cart/${barcode}`, { method: 'POST' })
+                .then(r => r.json())
+                .then(data => {
+                    cart = data.cart;
+                    renderCart();
+                })
+                .catch(e => showError('Error: ' + e));
+        }
+
+        function selectPayment(method) {
+            const qrisDiv = document.getElementById('qrisPayment');
+            const tunaiDiv = document.getElementById('tunaiPayment');
+
+            if (method === 'qris') {
+                qrisDiv.style.display = 'block';
+                tunaiDiv.style.display = 'none';
+            } else {
+                qrisDiv.style.display = 'none';
+                tunaiDiv.style.display = 'block';
+                document.getElementById('nominalInput').value = '';
+                document.getElementById('changeAmount').textContent = 'Rp 0';
+            }
+        }
+
+        function calculateChange() {
+            nominal: parseInt(document.getElementById('nominalInput').value) || 0
+            const total = parseInt(document.getElementById('totalAmount').dataset.total) || 0;
+            const change = nominal - total;
+
+            if (change < 0) {
+                document.getElementById('changeAmount').textContent = '❌ Nominal Kurang!';
+                document.getElementById('changeAmount').style.color = '#d32f2f';
+            } else {
+                document.getElementById('changeAmount').textContent = 'Rp ' + change.toLocaleString('id-ID');
+                document.getElementById('changeAmount').style.color = '#2d7a5b';
+            }
+        }
+
+        function checkout(method) {
+            const total = parseInt(document.getElementById('totalAmount').dataset.total);
+
+            if (total === 0) {
+                showError('Keranjang kosong!');
+                return;
+            }
+
+            if (method === 'tunai') {
+                const nominal = parseInt(document.getElementById('nominalInput').value) || 0;
+                if (nominal === 0) {
+                    showError('Masukkan nominal pembayaran!');
+                    return;
+                }
+                if (nominal < total) {
+                    showError('Nominal kurang!');
+                    return;
+                }
+            }
+
+            fetch('/checkout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    payment_method: method,
+                    nominal: parseInt(document.getElementById('nominalInput').value) || 0
+                })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    showSuccess('✓ Pembayaran berhasil! Invoice: ' + data.invoice_number);
+                    cart = {};
+                    renderCart();
+                    document.getElementById('qrisPayment').style.display = 'none';
+                    document.getElementById('tunaiPayment').style.display = 'none';
+                    setTimeout(() => location.reload(), 2000);
+                } else {
+                    showError(data.message || 'Checkout gagal');
+                }
+            })
+            .catch(e => showError('Error: ' + e));
+        }
+
+        function showError(msg) {
+            const el = document.getElementById('errorMsg');
+            el.textContent = '❌ ' + msg;
+            el.style.display = 'block';
+            setTimeout(() => el.style.display = 'none', 4000);
+        }
+
+        function showSuccess(msg) {
+            const el = document.getElementById('successMsg');
+            el.textContent = msg;
+            el.style.display = 'block';
+        }
+
+        document.getElementById('barcode').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') addProduct();
+        });
+    </script>
+</body>
+</html>

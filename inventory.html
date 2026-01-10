@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventory Dashboard - SmartKasir</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f3f4f6;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            color: #1f2937;
+        }
+
+        .btn-back {
+            background: #667eea;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        .tab {
+            padding: 12px 20px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            color: #6b7280;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        table th {
+            background: #f3f4f6;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #1f2937;
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        table td {
+            padding: 12px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        table tr:hover {
+            background: #f9fafb;
+        }
+
+        .alert-badge {
+            display: inline-block;
+            background: #fee2e2;
+            color: #dc2626;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .stock-ok {
+            color: #16a34a;
+        }
+
+        .stock-warning {
+            color: #ea580c;
+        }
+
+        .stock-danger {
+            color: #dc2626;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #9ca3af;
+        }
+
+        .empty {
+            text-align: center;
+            padding: 30px;
+            color: #9ca3af;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Inventory Dashboard</h1>
+            <a href="/" class="btn-back">← Kembali ke Kasir</a>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('alerts')">⚠️ Stock Alert</button>
+            <button class="tab" onclick="switchTab('logs')">📋 Activity Log</button>
+        </div>
+
+        <!-- Stock Alerts Tab -->
+        <div id="alerts" class="tab-content active">
+            <div class="card">
+                <h2 style="margin-bottom: 20px;">Produk Stok Minimum</h2>
+                <div id="alertsTable" class="loading">⏳ Memuat...</div>
+            </div>
+        </div>
+
+        <!-- Activity Logs Tab -->
+        <div id="logs" class="tab-content">
+            <div class="card">
+                <h2 style="margin-bottom: 20px;">Activity Log Inventory</h2>
+                <div id="logsTable" class="loading">⏳ Memuat...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function switchTab(tab) {
+            // Hide all
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+
+            // Show selected
+            document.getElementById(tab).classList.add('active');
+            event.target.classList.add('active');
+
+            // Load data if not loaded
+            if (tab === 'alerts') {
+                loadAlerts();
+            } else {
+                loadLogs();
+            }
+        }
+
+        function loadAlerts() {
+            fetch('/inventory/alerts')
+                .then(r => r.json())
+                .then(data => {
+                    const table = document.getElementById('alertsTable');
+
+                    if (!data.success || data.count === 0) {
+                        table.innerHTML = '<div class="empty">✅ Semua produk stoknya aman!</div>';
+                        return;
+                    }
+
+                    let html = `
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Barcode</th>
+                                    <th>Nama Produk</th>
+                                    <th>Stok Saat Ini</th>
+                                    <th>Minimum</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                    `;
+
+                    data.alerts.forEach(alert => {
+                        const status = alert.current_stock === 0 ? 'Habis!' : 'Minimal!';
+                        const statusClass = alert.current_stock === 0 ? 'stock-danger' : 'stock-warning';
+
+                        html += `
+                            <tr>
+                                <td>${alert.barcode}</td>
+                                <td>${alert.product_name}</td>
+                                <td class="stock-warning">${alert.current_stock}</td>
+                                <td>${alert.minimum_stock}</td>
+                                <td><span class="alert-badge ${statusClass}">${status}</span></td>
+                            </tr>
+                        `;
+                    });
+
+                    html += `</tbody></table>`;
+                    table.innerHTML = html;
+                })
+                .catch(e => {
+                    document.getElementById('alertsTable').innerHTML = `<div class="empty">❌ Error: ${e}</div>`;
+                });
+        }
+
+        function loadLogs() {
+            fetch('/inventory/logs')
+                .then(r => r.json())
+                .then(data => {
+                    const table = document.getElementById('logsTable');
+
+                    if (!data.success || data.logs.length === 0) {
+                        table.innerHTML = '<div class="empty">📭 Belum ada activity log</div>';
+                        return;
+                    }
+
+                    let html = `
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Waktu</th>
+                                    <th>Barcode</th>
+                                    <th>Produk</th>
+                                    <th>Action</th>
+                                    <th>Qty Change</th>
+                                    <th>Keterangan</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                    `;
+
+                    data.logs.forEach(log => {
+                        const date = new Date(log.created_at).toLocaleString('id-ID');
+                        const qtyColor = log.quantity_change > 0 ? '#16a34a' : '#dc2626';
+
+                        html += `
+                            <tr>
+                                <td>${date}</td>
+                                <td>${log.barcode}</td>
+                                <td>${log.product_name}</td>
+                                <td><strong>${log.action}</strong></td>
+                                <td style="color: ${qtyColor}; font-weight: bold;">${log.quantity_change > 0 ? '+' : ''}${log.quantity_change}</td>
+                                <td>${log.notes || '-'}</td>
+                            </tr>
+                        `;
+                    });
+
+                    html += `</tbody></table>`;
+                    table.innerHTML = html;
+                })
+                .catch(e => {
+                    document.getElementById('logsTable').innerHTML = `<div class="empty">❌ Error: ${e}</div>`;
+                });
+        }
+
+        // Load alerts on startup
+        loadAlerts();
+    </script>
+</body>
+</html>

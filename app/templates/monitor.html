@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartKasir - Monitor Display</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .monitor-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 900px;
+            width: 100%;
+            overflow: hidden;
+        }
+        
+        .monitor-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .monitor-header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .monitor-header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+        
+        .monitor-content {
+            padding: 40px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            align-items: center;
+        }
+        
+        .qris-section {
+            text-align: center;
+        }
+        
+        .qris-section h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+        }
+        
+        .qris-code {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 15px;
+            display: inline-block;
+            border: 3px solid #667eea;
+        }
+        
+        .qris-code img {
+            max-width: 300px;
+            height: auto;
+            display: block;
+        }
+        
+        .qris-info {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f0f4ff;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .qris-amount {
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+        
+        .qris-ref {
+            font-size: 1.1em;
+            color: #555;
+            word-break: break-all;
+        }
+        
+        .transaction-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 15px;
+            border: 2px solid #e9ecef;
+        }
+        
+        .transaction-section h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+        }
+        
+        .transactions-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .transaction-item {
+            background: white;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+            transition: transform 0.2s;
+        }
+        
+        .transaction-item:hover {
+            transform: translateX(5px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.1);
+        }
+        
+        .trans-amount {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .trans-time {
+            font-size: 0.9em;
+            color: #999;
+            margin-top: 5px;
+        }
+        
+        .trans-method {
+            display: inline-block;
+            background: #e7f3ff;
+            color: #0066cc;
+            padding: 4px 8px;
+            border-radius: 5px;
+            font-size: 0.85em;
+            margin-top: 8px;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            background: #10b981;
+            color: white;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            margin-left: 10px;
+        }
+        
+        .refresh-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+            margin-top: 15px;
+            transition: background 0.2s;
+        }
+        
+        .refresh-btn:hover {
+            background: #764ba2;
+        }
+        
+        .error-message {
+            background: #fee;
+            color: #c33;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 4px solid #c33;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #667eea;
+            font-size: 1.1em;
+        }
+        
+        @media (max-width: 768px) {
+            .monitor-content {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+            
+            .monitor-header h1 {
+                font-size: 1.8em;
+            }
+            
+            .qris-code img {
+                max-width: 250px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="monitor-container">
+        <div class="monitor-header">
+            <h1>💳 SmartKasir Monitor</h1>
+            <p>Real-time Payment & Transaction Display</p>
+        </div>
+        
+        <div class="monitor-content">
+            <!-- QRIS Display -->
+            <div class="qris-section">
+                <h2>📱 QRIS Payment</h2>
+                <div id="qris-container" class="loading">Loading QRIS...</div>
+            </div>
+            
+            <!-- Recent Transactions -->
+            <div class="transaction-section">
+                <h2>📊 Recent Transactions</h2>
+                <div id="transactions-container" class="transactions-list loading">Loading...</div>
+                <button class="refresh-btn" onclick="loadData()">🔄 Refresh</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = '/api';
+        let autoRefreshInterval;
+
+        // Load QRIS & Transactions
+        async function loadData() {
+            try {
+                // Load transactions
+                const transRes = await fetch(`${API_URL}/transactions/today`);
+                const transData = await transRes.json();
+                
+                if (transData.status === 'success') {
+                    displayTransactions(transData.transactions);
+                    
+                    // Generate QRIS untuk transaksi terbaru jika ada
+                    if (transData.transactions.length > 0) {
+                        const latestTrans = transData.transactions[0];
+                        generateQRIS(latestTrans.total_amount, latestTrans.id);
+                    }
+                } else {
+                    showError('Failed to load transactions');
+                }
+            } catch (error) {
+                showError('Error: ' + error.message);
+            }
+        }
+
+        // Generate QRIS Code
+        async function generateQRIS(amount, transId) {
+            try {
+                const res = await fetch(`${API_URL}/qris/generate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        amount: amount,
+                        description: `Transaction ${transId}`
+                    })
+                });
+                
+                const data = await res.json();
+                
+                if (data.status === 'success') {
+                    const container = document.getElementById('qris-container');
+                    container.innerHTML = `
+                        <div class="qris-code">
+                            <img src="${data.qr_base64}" alt="QRIS Code">
+                        </div>
+                        <div class="qris-info">
+                            <div class="qris-amount">Rp ${amount.toLocaleString('id-ID')}</div>
+                            <div class="qris-ref">Ref: TRX${String(transId).padStart(5, '0')}</div>
+                            <div style="margin-top: 10px; font-size: 0.9em; color: #666;">
+                                ✅ Ready to scan
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    showError('Failed to generate QRIS: ' + data.message);
+                }
+            } catch (error) {
+                showError('QRIS Error: ' + error.message);
+            }
+        }
+
+        // Display Transactions List
+        function displayTransactions(transactions) {
+            const container = document.getElementById('transactions-container');
+            
+            if (transactions.length === 0) {
+                container.innerHTML = '<p style="color: #999; padding: 20px;">No transactions today</p>';
+                return;
+            }
+            
+            const html = transactions.map(trans => `
+                <div class="transaction-item">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div class="trans-amount">Rp ${trans.total_amount.toLocaleString('id-ID')}</div>
+                            <div class="trans-time">${new Date(trans.created_at).toLocaleTimeString('id-ID')}</div>
+                            <div class="trans-method">${trans.payment_method.toUpperCase()}</div>
+                        </div>
+                        <div class="status-badge">✓ Done</div>
+                    </div>
+                </div>
+            `).join('');
+            
+            container.innerHTML = html;
+        }
+
+        // Show Error
+        function showError(msg) {
+            const qrisContainer = document.getElementById('qris-container');
+            const transContainer = document.getElementById('transactions-container');
+            
+            const errorHtml = `<div class="error-message">${msg}</div>`;
+            
+            if (qrisContainer.classList.contains('loading')) {
+                qrisContainer.innerHTML = errorHtml;
+                qrisContainer.classList.remove('loading');
+            }
+            if (transContainer.classList.contains('loading')) {
+                transContainer.innerHTML = errorHtml;
+                transContainer.classList.remove('loading');
+            }
+        }
+
+        // Auto-refresh setiap 5 detik
+        function startAutoRefresh() {
+            loadData(); // Load immediately
+            autoRefreshInterval = setInterval(loadData, 5000);
+        }
+
+        // Stop auto-refresh
+        function stopAutoRefresh() {
+            clearInterval(autoRefreshInterval);
+        }
+
+        // Start on page load
+        window.addEventListener('load', startAutoRefresh);
+        window.addEventListener('beforeunload', stopAutoRefresh);
+    </script>
+</body>
+</html>
