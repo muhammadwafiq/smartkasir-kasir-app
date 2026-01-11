@@ -1,0 +1,6 @@
+kasir.db
+smartkasir.db
+*.pyc
+__pycache__/
+venv/
+.env

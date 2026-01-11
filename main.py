@@ -499,84 +499,18 @@ def get_stock(barcode):
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
-@app.route('/api/manager/stock-alerts', methods=['GET'])
+@app.route('/inventory/alerts', methods=['GET'])
 @login_required
-def get_detailed_stock_alerts():
-    """Get detailed stock alerts with urgency levels and predictions"""
+def get_stock_alerts():
     try:
         db = get_db()
         cursor = db.cursor()
-        
-        # Get all products with stock below minimum
-        cursor.execute("""
-            SELECT id, barcode, name, stock, minimum_stock 
-            FROM products 
-            WHERE stock < minimum_stock
-            ORDER BY stock ASC
-        """)
-        products = cursor.fetchall()
-        
-        alerts = []
-        for product in products:
-            barcode = product['barcode']
-            current_stock = product['stock']
-            minimum_stock = product['minimum_stock']
-            
-            # Calculate urgency: critical (0-50%), warning (50-80%), normal (80%+)
-            stock_percent = (current_stock / minimum_stock * 100) if minimum_stock > 0 else 0
-            
-            if stock_percent < 20:
-                urgency = 'critical'
-                urgency_level = 1
-            elif stock_percent < 50:
-                urgency = 'warning'
-                urgency_level = 2
-            else:
-                urgency = 'normal'
-                urgency_level = 3
-            
-            # Simple prediction: days to stockout
-            cursor.execute("""
-                SELECT COUNT(*) as sales_count FROM inventory_logs
-                WHERE barcode = ? AND action = 'sold'
-                AND created_at >= datetime('now', '-7 days')
-            """, (barcode,))
-            weekly_sales = cursor.fetchone()['sales_count']
-            
-            daily_sales = weekly_sales / 7 if weekly_sales > 0 else 1
-            days_to_stockout = int(current_stock / daily_sales) if daily_sales > 0 else 999
-            
-            # Recommend reorder quantity (2 months supply)
-            recommended_reorder = int(daily_sales * 60)
-            
-            alerts.append({
-                'id': product['id'],
-                'barcode': barcode,
-                'name': product['name'],
-                'currentStock': current_stock,
-                'minimumStock': minimum_stock,
-                'urgency': urgency,
-                'urgencyLevel': urgency_level,
-                'daysToStockout': max(0, days_to_stockout),
-                'dailySales': round(daily_sales, 2),
-                'recommendedReorder': recommended_reorder,
-                'stockPercent': round(stock_percent, 1)
-            })
-        
-        # Sort by urgency level
-        alerts.sort(key=lambda x: x['urgencyLevel'])
-        
+        cursor.execute('SELECT DISTINCT barcode, product_name, current_stock, minimum_stock FROM stock_alerts WHERE status = "alert" ORDER BY created_at DESC')
+        alerts = cursor.fetchall()
         db.close()
-        
-        return jsonify({
-            'success': True,
-            'count': len(alerts),
-            'alerts': alerts
-        }), 200
+        return jsonify({'success': True, 'count': len(alerts), 'alerts': [dict(a) for a in alerts]}), 200
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
-
-
 
 @app.route('/inventory/logs', methods=['GET'])
 @login_required
@@ -621,46 +555,6 @@ def get_receipt(transaction_id):
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
-
-def get_period_date_range(period):
-    """Get start and end date based on period"""
-    tz = pytz.timezone('Asia/Jakarta')
-    now = datetime.now(tz)
-    
-    if period == 'today':
-        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
-        label = 'Today'
-    elif period == '7days':
-        end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
-        start = end - timedelta(days=7)
-        label = 'Last 7 Days'
-    elif period == '30days':
-        end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
-        start = end - timedelta(days=30)
-        label = 'Last 30 Days'
-    else:
-        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
-        label = 'Today'
-    
-    return (start.strftime('%Y-%m-%d %H:%M:%S'), end.strftime('%Y-%m-%d %H:%M:%S'), label)
-
-def calculate_health_score(transactions, stock_alerts):
-    """Calculate business health score (0-100)"""
-    health_score = 50
-    total_tx = len(transactions)
-    if total_tx > 10:
-        health_score += min(20, total_tx // 5)
-    health_score += 15
-    if stock_alerts == 0:
-        health_score += 15
-    elif stock_alerts <= 5:
-        health_score += 10
-    else:
-        health_score -= min(10, stock_alerts * 2)
-    return min(100, max(0, health_score))
-
 @app.route('/api/manager/analytics', methods=['GET'])
 @login_required
 def manager_analytics():
@@ -668,46 +562,48 @@ def manager_analytics():
         period = request.args.get('period', 'today')
         db = get_db()
         cursor = db.cursor()
-        start_date, end_date, label = get_period_date_range(period)
-        cursor.execute("SELECT * FROM transactions WHERE created_at >= ? AND created_at <= ? ORDER BY created_at DESC", (start_date, end_date))
+        
+        cursor.execute('SELECT * FROM transactions ORDER BY created_at DESC LIMIT 100')
         transactions = cursor.fetchall()
-        total_revenue = sum(t['total_amount'] for t in transactions)
+        
+        total_omzet = sum(t['total_amount'] for t in transactions)
         total_tx = len(transactions)
-        avg_tx = total_revenue / total_tx if total_tx > 0 else 0
-        total_profit = total_revenue * 0.30
-        cursor.execute("SELECT COUNT(*) as count FROM stock_alerts WHERE status = 'alert'")
+        avg_tx = total_omzet / total_tx if total_tx > 0 else 0
+        
+        cursor.execute('SELECT COUNT(*) as count FROM stock_alerts WHERE status = "alert"')
         stock_alerts = cursor.fetchone()['count']
-        top_products = {}
+        
+        top_products = []
         for tx in transactions:
             items = json.loads(tx['items_json'])
             for barcode, item in items.items():
-                if barcode not in top_products:
-                    top_products[barcode] = {'barcode': barcode, 'name': item['name'], 'qty': 0, 'revenue': 0}
-                top_products[barcode]['qty'] += item['qty']
-                top_products[barcode]['revenue'] += item['price'] * item['qty']
-        top_products_list = sorted(top_products.values(), key=lambda x: x['revenue'], reverse=True)[:5]
-        revenue_trend = []
-        if period == 'today':
-            hourly_data = {}
-            for tx in transactions:
-                hour = tx['created_at'][11:13]
-                if hour not in hourly_data:
-                    hourly_data[hour] = 0
-                hourly_data[hour] += tx['total_amount']
-            for h in range(24):
-                hour_str = f"{h:02d}:00"
-                revenue_trend.append({'label': hour_str, 'revenue': hourly_data.get(f"{h:02d}", 0)})
-        else:
-            daily_data = {}
-            for tx in transactions:
-                date = tx['created_at'][:10]
-                if date not in daily_data:
-                    daily_data[date] = 0
-                daily_data[date] += tx['total_amount']
-            revenue_trend = [{'label': k, 'revenue': v} for k, v in sorted(daily_data.items())]
-        health_score = calculate_health_score(transactions, stock_alerts)
+                found = False
+                for tp in top_products:
+                    if tp['barcode'] == barcode:
+                        tp['qty'] += item['qty']
+                        found = True
+                        break
+                if not found:
+                    top_products.append({'barcode': barcode, 'name': item['name'], 'qty': item['qty']})
+        
+        top_products.sort(key=lambda x: x['qty'], reverse=True)
+        top_products = top_products[:5]
+        
+        sales_trend = {'labels': ['Pagi', 'Siang', 'Sore', 'Malam'], 'values': [total_omzet//4]*4}
+        
         db.close()
-        return jsonify({'success': True, 'period': period, 'periodLabel': label, 'totalRevenue': total_revenue, 'totalTransactions': total_tx, 'avgTransaction': round(avg_tx, 0), 'totalProfit': round(total_profit, 0), 'profitMargin': 30.0, 'topProducts': top_products_list, 'stockAlerts': stock_alerts, 'revenueTrend': revenue_trend, 'healthScore': health_score}), 200
+        
+        return jsonify({
+            'success': True,
+            'totalOmzet': total_omzet,
+            'totalTransactions': total_tx,
+            'avgTransaction': avg_tx,
+            'topProduct': top_products[0] if top_products else None,
+            'topProducts': top_products,
+            'stockAlerts': stock_alerts,
+            'omzetChange': 5,
+            'salesTrend': sales_trend
+        }), 200
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
